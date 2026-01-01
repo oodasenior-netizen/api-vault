@@ -1,0 +1,5 @@
+{
+  "name": "API VAULT",
+  "description": "A high-security, polished interface for managing and storing API keys with password protection and local persistence.",
+  "requestFramePermissions": []
+}
