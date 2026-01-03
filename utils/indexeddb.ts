@@ -1,7 +1,7 @@
 // Utility for IndexedDB with AES-GCM encryption
 const DB_NAME = "secureVault";
 const STORE_NAME = "keys";
-const PASSWORD = "Oodaguyx14$";
+const PASSWORD = "Mikrlo123"; // Updated password
 
 // Derive an encryption key from a password
 async function deriveKey(password: string): Promise<CryptoKey> {
@@ -73,17 +73,94 @@ export async function storeEncryptedData(id: string, data: any) {
     const key = await deriveKey(PASSWORD);
     const db = await openDB();
     const encryptedData = await encryptData(key, data);
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).put(encryptedData, id);
-    await transaction.done;
+    return new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, "readwrite");
+        transaction.objectStore(STORE_NAME).put(encryptedData, id);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
 }
 
 // Retrieve and decrypt data from IndexedDB
 export async function retrieveDecryptedData(id: string): Promise<any> {
     const key = await deriveKey(PASSWORD);
     const db = await openDB();
-    const transaction = db.transaction(STORE_NAME, "readonly");
-    const encryptedData = await transaction.objectStore(STORE_NAME).get(id);
-    if (!encryptedData) return null;
-    return await decryptData(key, encryptedData);
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, "readonly");
+        const request = transaction.objectStore(STORE_NAME).get(id);
+        request.onsuccess = async () => {
+            const encryptedData = request.result;
+            if (!encryptedData) {
+                resolve(null);
+            } else {
+                try {
+                    const decrypted = await decryptData(key, encryptedData);
+                    resolve(decrypted);
+                } catch (err) {
+                    reject(err);
+                }
+            }
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function deriveUserKey(userId: string): Promise<CryptoKey> {
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(userId),
+        "PBKDF2",
+        false,
+        ["deriveKey"]
+    );
+    return crypto.subtle.deriveKey(
+        {
+            name: "PBKDF2",
+            salt: encoder.encode("user-specific-salt"),
+            iterations: 100000,
+            hash: "SHA-256",
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"]
+    );
+}
+
+export async function storeUserEncryptedData(userId: string, id: string, data: any) {
+    const key = await deriveUserKey(userId);
+    const db = await openDB();
+    const encryptedData = await encryptData(key, data);
+    return new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, "readwrite");
+        const storageId = `${userId}_${id}`;
+        transaction.objectStore(STORE_NAME).put(encryptedData, storageId);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+export async function retrieveUserDecryptedData(userId: string, id: string): Promise<any> {
+    const key = await deriveUserKey(userId);
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, "readonly");
+        const storageId = `${userId}_${id}`;
+        const request = transaction.objectStore(STORE_NAME).get(storageId);
+        request.onsuccess = async () => {
+            const encryptedData = request.result;
+            if (!encryptedData) {
+                resolve(null);
+            } else {
+                try {
+                    const decrypted = await decryptData(key, encryptedData);
+                    resolve(decrypted);
+                } catch (err) {
+                    reject(err);
+                }
+            }
+        };
+        request.onerror = () => reject(request.error);
+    });
 }

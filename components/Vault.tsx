@@ -15,49 +15,44 @@ import {
 import { APIKey } from '../types';
 import KeyItem from './KeyItem';
 import AddKeyModal from './AddKeyModal';
-import { obfuscate, deobfuscate } from '../utils/crypto';
-import { storeEncryptedData, retrieveDecryptedData } from '../utils/indexeddb';
+import { storeUserEncryptedData, retrieveUserDecryptedData } from '../utils/indexeddb';
 
 interface VaultProps {
   onLock: () => void;
+  user: any;
+  initialKeys: APIKey[];
 }
 
-const Vault: React.FC<VaultProps> = ({ onLock }) => {
-  const [keys, setKeys] = useState<APIKey[]>([]);
+const Vault: React.FC<VaultProps> = ({ onLock, user, initialKeys }) => {
+  const [keys, setKeys] = useState<APIKey[]>(initialKeys);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
-    const loadKeys = async () => {
-      setIsLoading(true);
-      try {
-        const savedKeys = await retrieveDecryptedData('vault_keys');
-        if (savedKeys) {
-          setKeys(savedKeys);
-        }
-      } catch (err) {
-        console.error('Failed to load keys from IndexedDB', err);
-      } finally {
-        setIsLoading(false);
-      }
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
     };
-    loadKeys();
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-  // Persist keys (with obfuscated secret values) whenever the keys state changes.
+  // Persist keys whenever the keys state changes
   useEffect(() => {
     const saveKeysToDB = async () => {
+      if (!user || !user.uid) return;
       try {
-        await storeEncryptedData('vault_keys', keys);
+        await storeUserEncryptedData(user.uid, 'vault_keys', keys);
       } catch (err) {
         console.error('Failed to save keys to IndexedDB', err);
       }
     };
     saveKeysToDB();
-  }, [keys]);
+  }, [keys, user]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;

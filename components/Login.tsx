@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { Lock, ShieldCheck, AlertCircle } from 'lucide-react';
-import { retrieveDecryptedData } from '../utils/indexeddb';
-import { VAULT_SECRET } from '../constants';
-
-const PASSWORD = 'Oodaguyx14$';
+import { login } from '../firebase';
+import { retrieveUserDecryptedData } from '../utils/indexeddb';
 
 interface LoginProps {
-  onUnlock: (keys: any[]) => void;
+  onUnlock: (user: any, keys: any[]) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onUnlock }) => {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -19,23 +18,16 @@ const Login: React.FC<LoginProps> = ({ onUnlock }) => {
     setIsVerifying(true);
     setError(false);
 
-    // Using a small timeout to simulate a "secure decryption" delay
-    setTimeout(async () => {
-      try {
-        if (password === PASSWORD) {
-          const keys = await retrieveDecryptedData('vault_keys');
-          onUnlock(keys || []);
-        } else {
-          setError(true);
-          setPassword('');
-        }
-      } catch (err) {
-        console.error("Verification error", err);
-        setError(true);
-      } finally {
-        setIsVerifying(false);
-      }
-    }, 600);
+    try {
+      const user = await login(email, password);
+      const keys = await retrieveUserDecryptedData(user.uid, 'vault_keys');
+      onUnlock(user, keys || []);
+    } catch (error) {
+      console.error('Login failed', error);
+      setError(true);
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   return (
@@ -55,12 +47,27 @@ const Login: React.FC<LoginProps> = ({ onUnlock }) => {
         <div className="space-y-4">
           <div className="relative">
             <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">
+              Email
+            </label>
+            <div className="relative">
+              <input
+                type="email"
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email..."
+                className={`w-full bg-zinc-950 border ${error ? 'border-red-500/50' : 'border-zinc-800'} rounded-xl px-4 py-3 text-white placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all`}
+              />
+            </div>
+          </div>
+
+          <div className="relative">
+            <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5 block">
               Security Code
             </label>
             <div className="relative">
               <input
                 type="password"
-                autoFocus
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter vault password..."
@@ -77,7 +84,7 @@ const Login: React.FC<LoginProps> = ({ onUnlock }) => {
 
           <button
             type="submit"
-            disabled={isVerifying || !password}
+            disabled={isVerifying || !email || !password}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-blue-600/20 active:scale-95 flex items-center justify-center gap-2"
           >
             {isVerifying ? (
