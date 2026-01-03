@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
@@ -16,6 +15,8 @@ import {
 import { APIKey } from '../types';
 import KeyItem from './KeyItem';
 import AddKeyModal from './AddKeyModal';
+import { obfuscate, deobfuscate } from '../utils/crypto';
+import { storeEncryptedData, retrieveDecryptedData } from '../utils/indexeddb';
 
 interface VaultProps {
   onLock: () => void;
@@ -30,24 +31,33 @@ const Vault: React.FC<VaultProps> = ({ onLock }) => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
-    const savedKeys = localStorage.getItem('api_vault_keys');
-    if (savedKeys) {
+    const loadKeys = async () => {
+      setIsLoading(true);
       try {
-        setKeys(JSON.parse(savedKeys));
-      } catch (e) {
-        console.error("Failed to load keys", e);
+        const savedKeys = await retrieveDecryptedData('vault_keys');
+        if (savedKeys) {
+          setKeys(savedKeys);
+        }
+      } catch (err) {
+        console.error('Failed to load keys from IndexedDB', err);
+      } finally {
+        setIsLoading(false);
       }
-    }
-    setTimeout(() => setIsLoading(false), 800);
-
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
     };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    loadKeys();
   }, []);
+
+  // Persist keys (with obfuscated secret values) whenever the keys state changes.
+  useEffect(() => {
+    const saveKeysToDB = async () => {
+      try {
+        await storeEncryptedData('vault_keys', keys);
+      } catch (err) {
+        console.error('Failed to save keys to IndexedDB', err);
+      }
+    };
+    saveKeysToDB();
+  }, [keys]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -60,7 +70,7 @@ const Vault: React.FC<VaultProps> = ({ onLock }) => {
 
   const saveKeys = (newKeys: APIKey[]) => {
     setKeys(newKeys);
-    localStorage.setItem('api_vault_keys', JSON.stringify(newKeys));
+    // Persistence is handled in the keys useEffect.
   };
 
   const addKey = (key: Omit<APIKey, 'id' | 'createdAt'>) => {

@@ -1,10 +1,12 @@
-
 import React, { useState } from 'react';
 import { Lock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { retrieveDecryptedData } from '../utils/indexeddb';
 import { VAULT_SECRET } from '../constants';
 
+const PASSWORD = 'Oodaguyx14$';
+
 interface LoginProps {
-  onUnlock: () => void;
+  onUnlock: (keys: any[]) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onUnlock }) => {
@@ -12,17 +14,17 @@ const Login: React.FC<LoginProps> = ({ onUnlock }) => {
   const [error, setError] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsVerifying(true);
     setError(false);
 
     // Using a small timeout to simulate a "secure decryption" delay
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
-        // Simple and robust comparison using standard btoa
-        if (btoa(password) === VAULT_SECRET) {
-          onUnlock();
+        if (password === PASSWORD) {
+          const keys = await retrieveDecryptedData('vault_keys');
+          onUnlock(keys || []);
         } else {
           setError(true);
           setPassword('');
